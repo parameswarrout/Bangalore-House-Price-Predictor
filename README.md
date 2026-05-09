@@ -5,7 +5,7 @@ A production-grade machine learning application for predicting house prices in B
 ## 📁 Project Structure
 
 ```text
-Rasonix_ML_Project/
+ML_Project/
 ├── backend/            # FastAPI service for predictions
 ├── frontend/           # React + Vite dashboard
 ├── ML/                 # Automated model training scripts

@@ -1,0 +1,15 @@
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+xgboost
+lightgbm
+category_encoders
+shap
+optuna
+jupyter
+ipykernel
+joblib
+fastapi
+uvicorn

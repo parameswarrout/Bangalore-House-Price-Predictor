@@ -53,3 +53,5 @@ backend/models/*.json
 Thumbs.db
 *.rar
 *.zip
+notebooks/Bangalore_House_Price_Prediction_V2_Full.md
+notebooks/extract_notebook_to_md.py

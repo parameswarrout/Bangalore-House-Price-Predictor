@@ -1,0 +1,17 @@
+{
+  "xgb": {
+    "n_estimators": 173,
+    "learning_rate": 0.1470745861502364,
+    "max_depth": 6
+  },
+  "lgbm": {
+    "n_estimators": 282,
+    "learning_rate": 0.08082126915029028,
+    "num_leaves": 28
+  },
+  "catboost": {
+    "iterations": 499,
+    "learning_rate": 0.13355137886564353,
+    "depth": 6
+  }
+}

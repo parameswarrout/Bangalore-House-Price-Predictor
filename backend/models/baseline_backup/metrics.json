@@ -1,0 +1,115 @@
+{
+  "trained_at": "2026-05-15T14:16:31.512413+00:00",
+  "model_version": "2.1.0",
+  "train_samples": 8111,
+  "test_samples": 2028,
+  "models": {
+    "xgb": {
+      "r2": 0.8485,
+      "mae_lakhs": 14.06,
+      "rmse_lakhs": 24.42,
+      "mape_pct": 16.99,
+      "median_ae_lakhs": 8.21
+    },
+    "lgbm": {
+      "r2": 0.84,
+      "mae_lakhs": 14.34,
+      "rmse_lakhs": 24.62,
+      "mape_pct": 17.65,
+      "median_ae_lakhs": 8.39
+    },
+    "ensemble": {
+      "r2": 0.8475,
+      "mae_lakhs": 14.14,
+      "rmse_lakhs": 24.37,
+      "mape_pct": 17.11,
+      "median_ae_lakhs": 8.25
+    }
+  },
+  "cv_5fold_train": {
+    "xgb": {
+      "r2": 0.8487,
+      "mae_lakhs": 15.05,
+      "rmse_lakhs": 25.8,
+      "mape_pct": 17.01,
+      "median_ae_lakhs": 8.36
+    },
+    "lgbm": {
+      "r2": 0.8442,
+      "mae_lakhs": 15.3,
+      "rmse_lakhs": 26.12,
+      "mape_pct": 17.45,
+      "median_ae_lakhs": 8.51
+    },
+    "ensemble": {
+      "r2": 0.8502,
+      "mae_lakhs": 15.08,
+      "rmse_lakhs": 25.59,
+      "mape_pct": 17.06,
+      "median_ae_lakhs": 8.55
+    }
+  },
+  "promotion_criteria": {
+    "ensemble_mae_lakhs_baseline": 18.86,
+    "deep_learning_api_promotion": "Promote DL to API only if holdout MAE < ensemble MAE and 0-100L bin MAPE does not regress.",
+    "deep_vs_ensemble": {
+      "ensemble_mae_lakhs": 14.14,
+      "embedding_mlp_mae_lakhs": 15.17,
+      "tabnet_mae_lakhs": 15.83,
+      "beats_ensemble": false,
+      "api_promotion_recommended": false
+    }
+  },
+  "shap_top_features": [
+    {
+      "feature": "total_sqft",
+      "importance": 0.3328
+    },
+    {
+      "feature": "location",
+      "importance": 0.1327
+    },
+    {
+      "feature": "bath",
+      "importance": 0.0313
+    },
+    {
+      "feature": "location_count",
+      "importance": 0.0283
+    },
+    {
+      "feature": "room_density",
+      "importance": 0.026
+    },
+    {
+      "feature": "balcony",
+      "importance": 0.017
+    },
+    {
+      "feature": "has_society",
+      "importance": 0.0151
+    },
+    {
+      "feature": "area_type_enc",
+      "importance": 0.0113
+    }
+  ],
+  "deep_learning": {
+    "embedding_mlp": {
+      "r2": 0.8294,
+      "mae_lakhs": 15.17,
+      "rmse_lakhs": 25.98,
+      "mape_pct": 17.12,
+      "median_ae_lakhs": 8.63
+    },
+    "tabnet": {
+      "r2": 0.8265,
+      "mae_lakhs": 15.83,
+      "rmse_lakhs": 27.15,
+      "mape_pct": 18.75,
+      "median_ae_lakhs": 9.29
+    },
+    "best_dl_mae_lakhs": 15.17,
+    "beats_ensemble": false
+  }
+}

@@ -37,7 +37,10 @@ backend/models/*.pkl
 backend/models/*.json
 # If you want to include metadata but not models:
 !backend/models/locations.json
+!backend/models/location_counts.json
 !backend/models/insights.json
+!backend/models/metrics.json
+reports/eda/
 
 # Environment variables
 .env
@@ -55,3 +58,41 @@ Thumbs.db
 *.zip
 notebooks/Bangalore_House_Price_Prediction_V2_Full.md
 notebooks/extract_notebook_to_md.py
+
+# Logs
+logs/
+
+
+# ML Models
+backend/models/**/*.pkl
+backend/models/**/*.pt
+backend/models/**/*.joblib
+backend/models/**/*.onnx
+
+# Training artifacts
+backend/models/training.log
+catboost_info/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Coverage & Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Model outputs and experiments
+reports/
+artifacts/
+outputs/
+checkpoints/
+
+# Keep metadata JSONs
+!backend/models/locations.json
+!backend/models/location_counts.json
+!backend/models/insights.json
+!backend/models/metrics.json

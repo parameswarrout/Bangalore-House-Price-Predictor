@@ -1,38 +1,100 @@
-# Bangalore Property Analytics
+# Bangalore House Price ML Project
 
-A production-grade machine learning application for predicting house prices in Bangalore.
+A full-stack machine learning application for predicting house prices in Bangalore.
 
-## 📁 Project Structure
+## Project structure
 
 ```text
 ML_Project/
-├── backend/            # FastAPI service for predictions
+├── backend/            # FastAPI service
 ├── frontend/           # React + Vite dashboard
-├── ML/                 # Automated model training scripts
-├── data/               # Raw datasets (CSV)
-├── notebooks/          # Exploratory Data Analysis & research
-└── requirements.txt    # Python dependencies
+├── ml_project/         # Shared ML package (training + inference)
+├── ML/                 # Training entrypoint
+├── data/               # Raw datasets
+├── notebooks/          # EDA & research (see notebooks/README.md)
+├── tests/              # pytest suite
+├── scripts/            # Setup helpers
+└── docker-compose.yml  # Container orchestration
 ```
 
-## 🚀 Quick Start
+## Quick start
 
-### 1. Training the Models
-To train the Top 3 models (Stacking, LGBM, XGBoost) and save them for the API:
+### Automated setup (Windows)
+
 ```powershell
+.\scripts\setup.ps1
+```
+
+### Manual setup
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements-dev.txt
 python ML/train.py
 ```
 
-### 2. Running the Backend
+### Run the API
+
 ```powershell
 cd backend
 uvicorn main:app --reload
 ```
 
-### 3. Running the Frontend
+API docs: http://localhost:8000/docs
+
+### Run the frontend
+
 ```powershell
 cd frontend
+cp .env.example .env   # or create .env with VITE_API_URL=http://localhost:8000
+npm install
 npm run dev
 ```
 
-## 🧠 Model Consensus Feature
-This POC features a **Consensus Engine** that compares predictions from multiple high-performance algorithms to ensure valuation accuracy.
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_URL` | `http://localhost:8000` | Frontend API base URL |
+| `MODEL_DIR` | `backend/models` | Directory for `.pkl` artifacts |
+| `REQUIRE_MODELS` | `true` | Fail API startup if models missing |
+| `CORS_ORIGINS` | `http://localhost:5173,...` | Allowed CORS origins |
+
+## Model consensus
+
+The API returns predictions from XGBoost, LightGBM, and a stacking ensemble. The primary price prefers the ensemble model; the response includes per-model values, spread percentage, and consensus method.
+
+## Docker
+
+```powershell
+# Train models first (artifacts mounted into backend)
+python ML/train.py
+docker compose up --build
+```
+
+## Testing
+
+```powershell
+pip install -r requirements-dev.txt
+python ML/train.py
+pytest tests/ -v
+```
+
+## Architecture
+
+```mermaid
+flowchart LR
+  CSV[data/bengaluru_house_prices.csv]
+  Train[ML/train.py]
+  Package[ml_project]
+  Models[backend/models]
+  API[FastAPI]
+  UI[React]
+
+  CSV --> Train
+  Package --> Train
+  Train --> Models
+  Models --> API
+  API --> UI
+```

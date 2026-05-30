@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_DIR=/app/backend/models
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+      - REQUIRE_MODELS=true
+    volumes:
+      - ./backend/models:/app/backend/models
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend

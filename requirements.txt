@@ -9,6 +9,7 @@ xgboost==2.1.4
 lightgbm==4.5.0
 category-encoders==2.9.0
 joblib==1.5.2
+shap>=0.46.0
 
 # Install shared ML package in editable mode
 -e .

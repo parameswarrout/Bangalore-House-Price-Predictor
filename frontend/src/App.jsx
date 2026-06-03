@@ -5,6 +5,7 @@ import ConsensusCard from './components/ConsensusCard';
 import InsightsPanel from './components/InsightsPanel';
 import PredictorForm from './components/PredictorForm';
 import DataRetrainingPanel from './components/DataRetrainingPanel';
+import ShapWaterfallChart from './components/ShapWaterfallChart';
 import { API_BASE } from './config';
 
 const App = () => {
@@ -15,6 +16,8 @@ const App = () => {
   const [apiWarningVariant, setApiWarningVariant] = useState('error');
   const [healthStatus, setHealthStatus] = useState(null);
   const [prediction, setPrediction] = useState(null);
+  const [shapData, setShapData] = useState(null);
+  const [shapLoading, setShapLoading] = useState(false);
   const [locations, setLocations] = useState(['Indira Nagar', 'Whitefield', 'Electronic City']);
   const [insights, setInsights] = useState(null);
   const [formData, setFormData] = useState({
@@ -85,23 +88,45 @@ const App = () => {
     return () => { cancelled = true; };
   }, []);
 
+  // Fetch SHAP explanation in background after prediction
+  async function fetchShapExplanation(payload) {
+    setShapLoading(true);
+    setShapData(null);
+    try {
+      const res = await fetch(`${API_BASE}/predict/explain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setShapData(await res.json());
+      }
+      // Silently ignore SHAP failures — prediction already shown
+    } catch {
+      // non-fatal
+    } finally {
+      setShapLoading(false);
+    }
+  }
+
   const handlePredict = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setPrediction(null);
+    setShapData(null);
+
+    const payload = {
+      ...formData,
+      total_sqft: Number(formData.total_sqft),
+      bath: Number(formData.bath),
+      bhk: Number(formData.bhk),
+      balcony: Number(formData.balcony),
+      area_type_enc: Number(formData.area_type_enc),
+      is_ready_to_move: Number(formData.is_ready_to_move),
+    };
 
     try {
-      const payload = {
-        ...formData,
-        total_sqft: Number(formData.total_sqft),
-        bath: Number(formData.bath),
-        bhk: Number(formData.bhk),
-        balcony: Number(formData.balcony),
-        area_type_enc: Number(formData.area_type_enc),
-        is_ready_to_move: Number(formData.is_ready_to_move),
-      };
-
       const response = await fetch(`${API_BASE}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -119,7 +144,11 @@ const App = () => {
         throw new Error(message);
       }
 
-      setPrediction(await response.json());
+      const predResult = await response.json();
+      setPrediction(predResult);
+
+      // Fire SHAP explanation concurrently (non-blocking)
+      fetchShapExplanation(payload);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -160,7 +189,7 @@ const App = () => {
             className={`tab-btn ${activeTab === 'retrain' ? 'active' : ''}`}
             onClick={() => setActiveTab('retrain')}
           >
-            Data Portal & Retraining
+            Data Portal &amp; Retraining
           </button>
         </div>
       </motion.div>
@@ -179,23 +208,36 @@ const App = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="main-grid"
           >
-            <PredictorForm
-              formData={formData}
-              locations={locations}
-              loading={loading}
-              predictDisabled={predictDisabled}
-              onChange={setFormData}
-              onSubmit={handlePredict}
-            />
+            <div className="main-grid">
+              <PredictorForm
+                formData={formData}
+                locations={locations}
+                loading={loading}
+                predictDisabled={predictDisabled}
+                onChange={setFormData}
+                onSubmit={handlePredict}
+              />
 
-            <div className="glass-card result-container">
-              {error && (
-                <ApiBanner message={error} variant="error" />
-              )}
-              <ConsensusCard prediction={prediction} formData={formData} />
+              <div className="glass-card result-container">
+                {error && (
+                  <ApiBanner message={error} variant="error" />
+                )}
+                <ConsensusCard prediction={prediction} formData={formData} />
+              </div>
             </div>
+
+            {/* SHAP Explanation Panel — full width below the main grid */}
+            {(shapLoading || shapData) && (
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                style={{ marginTop: '2rem' }}
+              >
+                <ShapWaterfallChart shapData={shapData} loading={shapLoading} />
+              </motion.div>
+            )}
           </motion.div>
         )}
 

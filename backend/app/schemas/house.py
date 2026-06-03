@@ -54,3 +54,21 @@ class PriceResponse(BaseModel):
     model_version: str
     consensus_method: str
     spread_pct: float | None = None
+
+
+class FeatureContribution(BaseModel):
+    feature: str
+    display_name: str
+    raw_value: str
+    shap_value: float
+    contribution_lakhs: float
+
+
+class ExplainResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    base_value_lakhs: float
+    predicted_price_lakhs: float
+    contributions: list[FeatureContribution]
+    model_version: str
+

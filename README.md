@@ -63,13 +63,19 @@ npm run dev
 
 ## Model consensus
 
-The API returns predictions from XGBoost, LightGBM, and a stacking ensemble. The primary price prefers the ensemble model; the response includes per-model values, spread percentage, and consensus method.
+The API computes a robust prediction consensus from:
+1. **LightGBM Regressor**
+2. **XGBoost Regressor**
+3. **Stacking Ensemble** (consisting of XGBoost, LightGBM, and CatBoost base models mapped to a final Ridge Regressor metamodel)
+4. **PyTorch Deep Learning MLP** (dynamically loaded if available)
+
+The primary predicted price is determined by the Stacking Ensemble model (and compared against the Deep Learning MLP predictions). The JSON response returns per-model values, spread percentages, and details about the consensus logic.
 
 ## Docker
 
 ```powershell
 # Train models first (artifacts mounted into backend)
-python ML/train.py
+python ML/train.py --deep --explain
 docker compose up --build
 ```
 
@@ -86,6 +92,7 @@ pytest tests/ -v
 ```mermaid
 flowchart LR
   CSV[data/bengaluru_house_prices.csv]
+  CustomCSV[data/user_contributed_prices.csv]
   Train[ML/train.py]
   Package[ml_project]
   Models[backend/models]
@@ -93,8 +100,23 @@ flowchart LR
   UI[React]
 
   CSV --> Train
+  CustomCSV --> Train
   Package --> Train
   Train --> Models
   Models --> API
   API --> UI
+  UI -->|Custom listings| API
+  API -->|Write custom CSV| CustomCSV
+
+  %% Custom Styling
+  classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#f8fafc;
+  classDef ui fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#ffffff;
+  classDef api fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+  classDef storage fill:#0b1329,stroke:#00b4d8,stroke-width:2px,color:#00b4d8;
+  classDef pipeline fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#ffffff;
+
+  class UI ui;
+  class API api;
+  class CSV,CustomCSV storage;
+  class Train pipeline;
 ```

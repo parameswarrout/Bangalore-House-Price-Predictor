@@ -19,7 +19,7 @@ export default function PredictorForm({
     const { name, value } = e.target;
     onChange({
       ...formData,
-      [name]: name === 'location' ? value : Number(value),
+      [name]: name === 'location' ? value : value === '' ? '' : Number(value),
     });
   };
 

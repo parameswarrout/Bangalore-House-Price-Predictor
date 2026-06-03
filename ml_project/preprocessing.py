@@ -54,7 +54,7 @@ def bucket_rare_locations(df: pd.DataFrame, threshold: int = RARE_LOCATION_THRES
     return df
 
 
-def remove_pps_outliers(df: pd.DataFrame) -> pd.DataFrame:
+def remove_pps_outliers(df: pd.DataFrame, std_multiplier: float = 1.0) -> pd.DataFrame:
     """Removes outliers based on price per sqft per location."""
     df_out = pd.DataFrame()
     for _, subdf in df.groupby("location"):
@@ -64,7 +64,7 @@ def remove_pps_outliers(df: pd.DataFrame) -> pd.DataFrame:
             df_out = pd.concat([df_out, subdf], ignore_index=True)
             continue
         reduced_df = subdf[
-            (subdf.price_per_sqft > (m - st)) & (subdf.price_per_sqft <= (m + st))
+            (subdf.price_per_sqft > (m - std_multiplier * st)) & (subdf.price_per_sqft <= (m + std_multiplier * st))
         ]
         df_out = pd.concat([df_out, reduced_df], ignore_index=True)
     return df_out
@@ -95,11 +95,23 @@ def normalize_location_for_inference(
     return loc
 
 
+def remove_outliers_and_cap_prices(df: pd.DataFrame, quantile: float = 0.99, std_multiplier: float = 1.0) -> pd.DataFrame:
+    """Applies outlier removal and global price capping (training-only filters)."""
+    df = df.copy()
+    if "price_per_sqft" not in df.columns and "price" in df.columns:
+        df["price_per_sqft"] = df["price"] * 100000 / df["total_sqft"]
+    df = remove_pps_outliers(df, std_multiplier=std_multiplier)
+    df = apply_price_cap(df, quantile=quantile)
+    return df
+
+
 def apply_feature_engineering(
     df: pd.DataFrame,
     *,
     apply_training_filters: bool = True,
     rare_location_threshold: int = RARE_LOCATION_THRESHOLD,
+    location_counts: dict[str, int] | None = None,
+    std_multiplier: float = 1.0,
 ) -> pd.DataFrame:
     """
     Applies V2 feature engineering aligned with the research notebook.
@@ -133,16 +145,29 @@ def apply_feature_engineering(
         )
 
     df["location"] = df["location"].astype(str).str.strip()
-    df["location_count"] = df.groupby("location")["location"].transform("count")
-    df = bucket_rare_locations(df, threshold=rare_location_threshold)
-    df["location_count"] = df.groupby("location")["location"].transform("count")
+    
+    if location_counts is not None:
+        # Use precomputed location counts (inference/test set)
+        df["location"] = df["location"].apply(
+            lambda loc: normalize_location_for_inference(
+                loc, location_counts=location_counts, threshold=rare_location_threshold
+            )
+        )
+        df["location_count"] = df["location"].apply(
+            lambda loc: location_counts.get(loc, 1)
+        )
+    else:
+        # On-the-fly bucketing (training set base)
+        df = bucket_rare_locations(df, threshold=rare_location_threshold)
+        df["location_count"] = df.groupby("location")["location"].transform("count")
 
     df = df[df.total_sqft / df.bhk >= 300]
-    df["price_per_sqft"] = df["price"] * 100000 / df["total_sqft"]
+    
+    if "price" in df.columns:
+        df["price_per_sqft"] = df["price"] * 100000 / df["total_sqft"]
 
     if apply_training_filters:
-        df = remove_pps_outliers(df)
-        df = apply_price_cap(df, quantile=0.99)
+        df = remove_outliers_and_cap_prices(df, quantile=0.99, std_multiplier=std_multiplier)
 
     df["sqft_per_room"] = df["total_sqft"] / (df["bhk"] + df["bath"])
     df["room_density"] = df["bhk"] / (df["total_sqft"] / 1000)
@@ -154,7 +179,14 @@ def apply_feature_engineering(
 import os
 
 
-def load_and_prepare_training_frame(csv_path: str, custom_csv_path: str = None) -> pd.DataFrame:
+def load_and_prepare_training_frame(
+    csv_path: str,
+    custom_csv_path: str = None,
+    apply_training_filters: bool = True,
+    rare_location_threshold: int = RARE_LOCATION_THRESHOLD,
+    location_counts: dict[str, int] | None = None,
+    std_multiplier: float = 1.0,
+) -> pd.DataFrame:
     """Load raw CSV and return the cleaned training dataframe."""
     df = pd.read_csv(csv_path)
     if custom_csv_path and os.path.exists(custom_csv_path):
@@ -167,7 +199,13 @@ def load_and_prepare_training_frame(csv_path: str, custom_csv_path: str = None) 
             
     df["total_sqft"] = df["total_sqft"].apply(clean_total_sqft)
     df = df.dropna(subset=["total_sqft", "bath", "location", "price"])
-    return apply_feature_engineering(df)
+    return apply_feature_engineering(
+        df,
+        apply_training_filters=apply_training_filters,
+        rare_location_threshold=rare_location_threshold,
+        location_counts=location_counts,
+        std_multiplier=std_multiplier,
+    )
 
 
 EXPECTED_COLUMNS = [

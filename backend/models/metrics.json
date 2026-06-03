@@ -1,61 +1,61 @@
 {
-  "trained_at": "2026-05-15T14:16:31.512413+00:00",
+  "trained_at": "2026-06-03T18:10:17.644160+00:00",
   "model_version": "2.1.0",
-  "train_samples": 8111,
-  "test_samples": 2028,
+  "train_samples": 9698,
+  "test_samples": 2492,
   "models": {
     "xgb": {
-      "r2": 0.8485,
-      "mae_lakhs": 14.06,
-      "rmse_lakhs": 24.42,
-      "mape_pct": 16.99,
-      "median_ae_lakhs": 8.21
+      "r2": 0.7982,
+      "mae_lakhs": 34.22,
+      "rmse_lakhs": 116.86,
+      "mape_pct": 23.04,
+      "median_ae_lakhs": 11.16
     },
     "lgbm": {
-      "r2": 0.84,
-      "mae_lakhs": 14.34,
-      "rmse_lakhs": 24.62,
-      "mape_pct": 17.65,
-      "median_ae_lakhs": 8.39
+      "r2": 0.8033,
+      "mae_lakhs": 33.54,
+      "rmse_lakhs": 114.85,
+      "mape_pct": 22.88,
+      "median_ae_lakhs": 10.95
     },
     "ensemble": {
-      "r2": 0.8475,
-      "mae_lakhs": 14.14,
-      "rmse_lakhs": 24.37,
-      "mape_pct": 17.11,
-      "median_ae_lakhs": 8.25
+      "r2": 0.7986,
+      "mae_lakhs": 34.25,
+      "rmse_lakhs": 112.11,
+      "mape_pct": 23.51,
+      "median_ae_lakhs": 11.59
     }
   },
   "cv_5fold_train": {
     "xgb": {
-      "r2": 0.8487,
-      "mae_lakhs": 15.05,
-      "rmse_lakhs": 25.8,
-      "mape_pct": 17.01,
-      "median_ae_lakhs": 8.36
+      "r2": 0.8158,
+      "mae_lakhs": 21.51,
+      "rmse_lakhs": 39.44,
+      "mape_pct": 21.42,
+      "median_ae_lakhs": 10.77
     },
     "lgbm": {
-      "r2": 0.8442,
-      "mae_lakhs": 15.3,
-      "rmse_lakhs": 26.12,
-      "mape_pct": 17.45,
-      "median_ae_lakhs": 8.51
+      "r2": 0.8175,
+      "mae_lakhs": 21.17,
+      "rmse_lakhs": 38.85,
+      "mape_pct": 21.37,
+      "median_ae_lakhs": 10.53
     },
     "ensemble": {
-      "r2": 0.8502,
-      "mae_lakhs": 15.08,
-      "rmse_lakhs": 25.59,
-      "mape_pct": 17.06,
-      "median_ae_lakhs": 8.55
+      "r2": 0.806,
+      "mae_lakhs": 22.1,
+      "rmse_lakhs": 39.65,
+      "mape_pct": 21.77,
+      "median_ae_lakhs": 11.06
     }
   },
   "promotion_criteria": {
     "ensemble_mae_lakhs_baseline": 18.86,
     "deep_learning_api_promotion": "Promote DL to API only if holdout MAE < ensemble MAE and 0-100L bin MAPE does not regress.",
     "deep_vs_ensemble": {
-      "ensemble_mae_lakhs": 14.14,
-      "embedding_mlp_mae_lakhs": 15.17,
-      "tabnet_mae_lakhs": 15.83,
+      "ensemble_mae_lakhs": 34.25,
+      "embedding_mlp_mae_lakhs": 35.49,
+      "tabnet_mae_lakhs": 40.68,
       "beats_ensemble": false,
       "api_promotion_recommended": false
     }
@@ -63,53 +63,53 @@
   "shap_top_features": [
     {
       "feature": "total_sqft",
-      "importance": 0.3328
-    },
-    {
-      "feature": "location",
-      "importance": 0.1327
-    },
-    {
-      "feature": "bath",
-      "importance": 0.0313
-    },
-    {
-      "feature": "location_count",
-      "importance": 0.0283
-    },
-    {
-      "feature": "room_density",
-      "importance": 0.026
-    },
-    {
-      "feature": "balcony",
-      "importance": 0.017
-    },
-    {
-      "feature": "has_society",
-      "importance": 0.0151
+      "importance": 0.3451
     },
     {
       "feature": "area_type_enc",
-      "importance": 0.0113
+      "importance": 0.0961
+    },
+    {
+      "feature": "location",
+      "importance": 0.0841
+    },
+    {
+      "feature": "bath",
+      "importance": 0.0615
+    },
+    {
+      "feature": "room_density",
+      "importance": 0.0256
+    },
+    {
+      "feature": "sqft_per_room",
+      "importance": 0.0225
+    },
+    {
+      "feature": "location_count",
+      "importance": 0.0218
+    },
+    {
+      "feature": "has_society",
+      "importance": 0.0164
     }
   ],
   "deep_learning": {
     "embedding_mlp": {
-      "r2": 0.8294,
-      "mae_lakhs": 15.17,
-      "rmse_lakhs": 25.98,
-      "mape_pct": 17.12,
-      "median_ae_lakhs": 8.63
+      "r2": 0.7791,
+      "mae_lakhs": 35.49,
+      "rmse_lakhs": 117.02,
+      "mape_pct": 23.43,
+      "median_ae_lakhs": 11.79
     },
     "tabnet": {
-      "r2": 0.8265,
-      "mae_lakhs": 15.83,
-      "rmse_lakhs": 27.15,
-      "mape_pct": 18.75,
-      "median_ae_lakhs": 9.29
+      "r2": 0.7049,
+      "mae_lakhs": 40.68,
+      "rmse_lakhs": 126.44,
+      "mape_pct": 30.05,
+      "median_ae_lakhs": 15.56
     },
-    "best_dl_mae_lakhs": 15.17,
+    "best_dl_mae_lakhs": 35.49,
     "beats_ensemble": false
   }
 }

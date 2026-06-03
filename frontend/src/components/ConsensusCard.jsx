@@ -2,6 +2,14 @@ import { motion } from 'framer-motion';
 import { BarChart2, TrendingUp } from 'lucide-react';
 import { calculateConfidence } from '../utils/confidence';
 
+const MODEL_DISPLAY_NAMES = {
+  ensemble: 'Stacking Meta-Model',
+  xgb: 'XGBoost Model',
+  lgbm: 'LightGBM Model',
+  catboost: 'CatBoost Model',
+  deep_learning_mlp: 'Deep Learning MLP',
+};
+
 export function EmptyConsensus() {
   return (
     <motion.div style={{ opacity: 0.5 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -95,7 +103,7 @@ export default function ConsensusCard({ prediction, formData }) {
                       fontWeight: name === 'ensemble' ? '700' : '400',
                     }}
                   >
-                    {name === 'ensemble' ? 'Stacking Meta-Model' : `${name.toUpperCase()} Model`}
+                    {MODEL_DISPLAY_NAMES[name] || `${name.toUpperCase()} Model`}
                   </span>
                   <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>₹ {price} L</span>
                 </div>

@@ -1,27 +1,37 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Database,
   UploadCloud,
   FileText,
   Trash2,
-  Settings,
   Play,
   CheckCircle,
-  AlertCircle,
   Terminal,
-  TrendingUp,
   Plus,
   RefreshCw,
   Sliders,
-  Trash
+  Trash,
+  Minus,
+  Square,
+  X
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import ApiBanner from './ApiBanner';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 export default function DataRetrainingPanel({ locations }) {
   // Manual Form State
   const [form, setForm] = useState({
-    location: '',
+    location: locations && locations.length > 0 ? locations[0] : '',
     total_sqft: 1200,
     bhk: 2,
     bath: 2,
@@ -64,33 +74,8 @@ export default function DataRetrainingPanel({ locations }) {
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(null);
 
-  const logsEndRef = useRef(null);
+  const terminalBodyRef = useRef(null);
   const pollIntervalRef = useRef(null);
-
-  // Set default location once locations are loaded
-  useEffect(() => {
-    if (locations && locations.length > 0 && !form.location) {
-      setForm(prev => ({ ...prev, location: locations[0] }));
-    }
-  }, [locations, form.location]);
-
-  // Load Custom Data & Stats on Mount
-  useEffect(() => {
-    fetchStats();
-    fetchCustomData();
-    checkTrainingStatus();
-    
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    };
-  }, []);
-
-  // Autoscroll terminal logs
-  useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [trainingLogs]);
 
   // Fetch functions
   const fetchStats = async () => {
@@ -115,28 +100,6 @@ export default function DataRetrainingPanel({ locations }) {
       }
     } catch (err) {
       console.error("Failed to load custom data", err);
-    }
-  };
-
-  const checkTrainingStatus = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/train/status`);
-      if (res.ok) {
-        const data = await res.json();
-        setTrainingStatus(data.status);
-        setTrainingLogs(data.logs);
-        if (data.metrics && data.metrics.models) {
-          setTrainingMetrics(data.metrics);
-        }
-        setTrainingError(data.error);
-
-        // If training is active, start polling
-        if (data.status === 'running') {
-          startPollingStatus();
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch training status", err);
     }
   };
 
@@ -168,6 +131,48 @@ export default function DataRetrainingPanel({ locations }) {
     }, 1500);
   };
 
+  const checkTrainingStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/train/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setTrainingStatus(data.status);
+        setTrainingLogs(data.logs);
+        if (data.metrics && data.metrics.models) {
+          setTrainingMetrics(data.metrics);
+        }
+        setTrainingError(data.error);
+
+        // If training is active, start polling
+        if (data.status === 'running') {
+          startPollingStatus();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch training status", err);
+    }
+  };
+
+  // Load Custom Data & Stats on Mount
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStats();
+    fetchCustomData();
+    checkTrainingStatus();
+    
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Autoscroll terminal logs inside the box only
+  useEffect(() => {
+    if (terminalBodyRef.current) {
+      terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
+    }
+  }, [trainingLogs]);
+
   // Form Input Change
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -175,7 +180,7 @@ export default function DataRetrainingPanel({ locations }) {
       ...prev,
       [name]: (name === 'location' || name === 'area_type' || name === 'availability' || name === 'society') 
         ? value 
-        : Number(value)
+        : value === '' ? '' : Number(value)
     }));
   };
 
@@ -185,8 +190,11 @@ export default function DataRetrainingPanel({ locations }) {
     setFormError(null);
     setFormSuccess(null);
 
+    const bhkNum = Number(form.bhk);
+    const sqftNum = Number(form.total_sqft);
+
     // Business rule validation: total_sqft / bhk >= 300
-    if (form.total_sqft / form.bhk < 300) {
+    if (sqftNum / bhkNum < 300) {
       setFormError("Validation Error: Total square feet per BHK must be at least 300 sqft.");
       return;
     }
@@ -197,12 +205,12 @@ export default function DataRetrainingPanel({ locations }) {
         area_type: form.area_type,
         availability: form.availability,
         location: form.location,
-        size: `${form.bhk} BHK`, // training preprocessing parses BHK from size string
+        size: `${bhkNum} BHK`, // training preprocessing parses BHK from size string
         society: form.society || "",
-        total_sqft: form.total_sqft,
-        bath: form.bath,
-        balcony: form.balcony,
-        price: form.price
+        total_sqft: sqftNum,
+        bath: Number(form.bath),
+        balcony: Number(form.balcony),
+        price: Number(form.price)
       };
 
       const res = await fetch(`${API_BASE}/custom-data/add`, {
@@ -646,7 +654,7 @@ export default function DataRetrainingPanel({ locations }) {
         </div>
 
         {/* Right Column: Statistics, Retraining Controls & Console Terminal */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0 }}>
           
           {/* Statistics Grid */}
           <div className="stats-grid">
@@ -789,29 +797,41 @@ export default function DataRetrainingPanel({ locations }) {
           </div>
 
           {/* Scrolling Terminal Logs Console */}
-          <div className="glass-card terminal-card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="terminal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Terminal size={16} />
-                <span>Training Session Output Console</span>
+          <div className="glass-card terminal-card" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, width: '100%', overflow: 'hidden' }}>
+            <div className="terminal-header" style={{ paddingRight: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', fontWeight: '500' }}>
+                <Terminal size={14} color="var(--primary)" />
+                <span>bash - retrain_process.sh</span>
               </div>
-              <div className="terminal-status-indicator">
-                <span className={`status-dot ${trainingStatus}`} />
-                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: '700' }}>
-                  {trainingStatus}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                <div className="terminal-status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span className={`status-dot ${trainingStatus}`} />
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: '700', color: 'var(--text-muted)' }}>
+                    {trainingStatus}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '0.5rem' }}>
+                  <div className="terminal-control-btn" title="Minimize">
+                    <Minus size={11} />
+                  </div>
+                  <div className="terminal-control-btn" title="Maximize">
+                    <Square size={8} />
+                  </div>
+                  <div className="terminal-control-btn close" title="Close">
+                    <X size={11} />
+                  </div>
+                </div>
               </div>
             </div>
             
-            <div className="terminal-body">
+            <div ref={terminalBodyRef} className="terminal-body" style={{ maxHeight: '250px', overflowY: 'auto', overflowX: 'auto', width: '100%' }}>
               {trainingLogs ? (
-                <pre>{trainingLogs}</pre>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxWidth: '100%' }}>{trainingLogs}</pre>
               ) : (
                 <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '1rem' }}>
                   Console idle. Press &quot;Execute Model Retraining&quot; to begin.
                 </div>
               )}
-              <div ref={logsEndRef} />
             </div>
           </div>
 
@@ -820,40 +840,165 @@ export default function DataRetrainingPanel({ locations }) {
       </div>
 
       {/* Accuracy Metrics Comparison Section */}
-      {trainingMetrics && trainingMetrics.models && (
-        <div className="glass-card" style={{ padding: '2rem', marginTop: '2.5rem', marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <CheckCircle size={22} color="#10b981" />
-            <h2 style={{ fontSize: '1.3rem' }}>Latest Retrained Model Metrics</h2>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
-            {Object.entries(trainingMetrics.models).map(([modelName, m]) => (
-              <div key={modelName} className="glass-card metric-card" style={{ padding: '1.25rem', background: 'rgba(255, 255, 255, 0.02)' }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>
-                  {modelName === 'ensemble' ? 'Stacking Ensemble' : modelName.toUpperCase()}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Holdout R²</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--primary)' }}>
-                      {m.r2 ? m.r2.toFixed(4) : 'N/A'}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MAE (Lakhs)</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--secondary)' }}>
-                      {m.mae_lakhs ? `${m.mae_lakhs.toFixed(2)}L` : 'N/A'}
-                    </div>
-                  </div>
+      {trainingMetrics && trainingMetrics.models && (() => {
+        const chartData = [];
+        Object.entries(trainingMetrics.models).forEach(([key, m]) => {
+          const name = key === 'ensemble' ? 'Stacking Ensemble' : key.toUpperCase();
+          chartData.push({
+            name,
+            r2: m.r2 ? parseFloat((m.r2 * 100).toFixed(2)) : 0,
+            mae: m.mae_lakhs ? parseFloat(m.mae_lakhs.toFixed(2)) : 0,
+          });
+        });
+        
+        // Add PyTorch Deep Learning MLP if it was trained and is in the metrics
+        const deepMLP = trainingMetrics.deep_learning?.embedding_mlp;
+        if (deepMLP) {
+          chartData.push({
+            name: 'Embedding MLP',
+            r2: deepMLP.r2 ? parseFloat((deepMLP.r2 * 100).toFixed(2)) : 0,
+            mae: deepMLP.mae_lakhs ? parseFloat(deepMLP.mae_lakhs.toFixed(2)) : 0,
+          });
+        }
+        
+        const tabnet = trainingMetrics.deep_learning?.tabnet;
+        if (tabnet) {
+          chartData.push({
+            name: 'TabNet',
+            r2: tabnet.r2 ? parseFloat((tabnet.r2 * 100).toFixed(2)) : 0,
+            mae: tabnet.mae_lakhs ? parseFloat(tabnet.mae_lakhs.toFixed(2)) : 0,
+          });
+        }
+
+        return (
+          <div className="glass-card" style={{ padding: '2rem', marginTop: '2.5rem', marginBottom: '2.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <CheckCircle size={22} color="#10b981" />
+              <h2 style={{ fontSize: '1.3rem' }}>Latest Retrained Model Metrics</h2>
+            </div>
+
+            {/* Recharts Graphs */}
+            <div className="metrics-charts-grid">
+              {/* R2 Score Chart */}
+              <div className="chart-wrapper" style={{ background: 'rgba(15, 23, 42, 0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                <h4 style={{ marginBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Holdout R² Score (%)</h4>
+                <div style={{ width: '100%', height: 220 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={10} domain={[0, 100]} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                        itemStyle={{ color: 'var(--primary)' }}
+                      />
+                      <Bar dataKey="r2" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.name.includes('Stacking') ? 'var(--secondary)' : 'var(--primary)'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
-            ))}
+              
+              {/* MAE Chart */}
+              <div className="chart-wrapper" style={{ background: 'rgba(15, 23, 42, 0.3)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                <h4 style={{ marginBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Holdout MAE (Lakhs)</h4>
+                <div style={{ width: '100%', height: 220 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                        itemStyle={{ color: '#ec4899' }}
+                      />
+                      <Bar dataKey="mae" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.name.includes('Stacking') ? 'var(--secondary)' : '#10b981'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Individual Metrics Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+              {Object.entries(trainingMetrics.models).map(([modelName, m]) => (
+                <div key={modelName} className="glass-card metric-card" style={{ padding: '1.25rem', background: 'rgba(255, 255, 255, 0.02)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>
+                    {modelName === 'ensemble' ? 'Stacking Ensemble' : modelName.toUpperCase()}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Holdout R²</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--primary)' }}>
+                        {m.r2 ? m.r2.toFixed(4) : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MAE (Lakhs)</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--secondary)' }}>
+                        {m.mae_lakhs ? `${m.mae_lakhs.toFixed(2)}L` : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {deepMLP && (
+                <div className="glass-card metric-card" style={{ padding: '1.25rem', background: 'rgba(255, 255, 255, 0.02)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>
+                    Embedding MLP
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Holdout R²</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--primary)' }}>
+                        {deepMLP.r2 ? deepMLP.r2.toFixed(4) : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MAE (Lakhs)</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--secondary)' }}>
+                        {deepMLP.mae_lakhs ? `${deepMLP.mae_lakhs.toFixed(2)}L` : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {tabnet && (
+                <div className="glass-card metric-card" style={{ padding: '1.25rem', background: 'rgba(255, 255, 255, 0.02)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>
+                    TabNet
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Holdout R²</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--primary)' }}>
+                        {tabnet.r2 ? tabnet.r2.toFixed(4) : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MAE (Lakhs)</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--secondary)' }}>
+                        {tabnet.mae_lakhs ? `${tabnet.mae_lakhs.toFixed(2)}L` : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '1.5rem', textAlign: 'right' }}>
+              Trained at: {trainingMetrics.trained_at ? new Date(trainingMetrics.trained_at).toLocaleString() : 'N/A'}
+            </div>
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '1rem', textAlign: 'right' }}>
-            Trained at: {trainingMetrics.trained_at ? new Date(trainingMetrics.trained_at).toLocaleString() : 'N/A'}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Custom Dataset Overview Grid/Table */}
       <div className="glass-card" style={{ padding: '2rem', marginTop: '2.5rem' }}>

@@ -48,15 +48,55 @@ def check_and_backup_baseline(model_dir):
             logger.info("Backed up %s to baseline_backup", filename)
 
 
-# Global state for training task
+import json
+
+# Global lock for process synchronization within this thread
 training_lock = threading.Lock()
-current_process = None
-training_state = {
-    "status": "idle",  # idle, running, completed, failed
-    "started_at": None,
-    "completed_at": None,
-    "error": None,
-}
+STATUS_FILE = os.path.join(LOGS_DIR, "training_status.json")
+
+
+def is_pid_running(pid: int) -> bool:
+    """Check if process with pid is still active in the OS in a cross-platform way."""
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Access denied, but process exists
+        return True
+    except Exception:
+        return False
+
+
+def read_training_status() -> dict:
+    """Reads training status from persistent storage."""
+    if os.path.exists(STATUS_FILE):
+        try:
+            with open(STATUS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error("Failed to read training status: %s", e)
+            
+    return {
+        "status": "idle",
+        "pid": None,
+        "started_at": None,
+        "completed_at": None,
+        "error": None,
+    }
+
+
+def write_training_status(state: dict):
+    """Writes training status to persistent storage."""
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        with open(STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        logger.error("Failed to write training status: %s", e)
 
 
 class TrainRequest(BaseModel):
@@ -67,36 +107,44 @@ class TrainRequest(BaseModel):
 
 
 def watch_training(process, log_path):
-    global current_process, training_state
-    
     process.wait()
     
     with training_lock:
-        current_process = None
-        training_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+        state = read_training_status()
+        state["pid"] = None
+        state["completed_at"] = datetime.now(timezone.utc).isoformat()
         
         if process.returncode == 0:
-            training_state["status"] = "completed"
-            training_state["error"] = None
+            state["status"] = "completed"
+            state["error"] = None
             logger.info("Background model training completed successfully. Reloading models...")
             try:
                 manager.reload()
             except Exception as e:
                 logger.error("Failed to reload models: %s", e)
-                training_state["error"] = f"Reload failed: {e}"
+                state["error"] = f"Reload failed: {e}"
         else:
-            training_state["status"] = "failed"
-            training_state["error"] = f"Training failed with exit code {process.returncode}"
+            state["status"] = "failed"
+            state["error"] = f"Training failed with exit code {process.returncode}"
             logger.error("Background model training failed with exit code %d", process.returncode)
+            
+        write_training_status(state)
 
 
 @router.post("/train")
 def trigger_training(req: TrainRequest):
-    global current_process, training_state
-    
     with training_lock:
-        if training_state["status"] == "running" or current_process is not None:
-            raise HTTPException(status_code=400, detail="Training is already in progress")
+        state = read_training_status()
+        
+        if state["status"] == "running":
+            pid = state.get("pid")
+            if is_pid_running(pid):
+                raise HTTPException(status_code=400, detail="Training is already in progress")
+            else:
+                logger.warning("Training status was 'running' but process %s is dead. Auto-recovering status.", pid)
+                state["status"] = "failed"
+                state["error"] = "Training process was aborted unexpectedly (zombie cleared)"
+                write_training_status(state)
             
         settings = get_settings()
         model_dir = settings["model_dir"]
@@ -132,19 +180,24 @@ def trigger_training(req: TrainRequest):
             env["SUBPROCESS_RUN"] = "true"
 
             # Start background process
-            process = subprocess.Popen(
-                cmd,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                cwd=PROJECT_ROOT,
-                env=env
-            )
+            popen_kwargs = {
+                "stdout": log_file,
+                "stderr": subprocess.STDOUT,
+                "cwd": PROJECT_ROOT,
+                "env": env,
+                "close_fds": True
+            }
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+            process = subprocess.Popen(cmd, **popen_kwargs)
             
-            current_process = process
-            training_state["status"] = "running"
-            training_state["started_at"] = datetime.now(timezone.utc).isoformat()
-            training_state["completed_at"] = None
-            training_state["error"] = None
+            state["status"] = "running"
+            state["pid"] = process.pid
+            state["started_at"] = datetime.now(timezone.utc).isoformat()
+            state["completed_at"] = None
+            state["error"] = None
+            write_training_status(state)
             
             # Thread to wait for process and handle success/fail
             watcher = threading.Thread(target=watch_training, args=(process, log_path))
@@ -154,19 +207,19 @@ def trigger_training(req: TrainRequest):
             return {
                 "status": "success",
                 "message": "Training started successfully in the background",
-                "started_at": training_state["started_at"]
+                "started_at": state["started_at"]
             }
         except Exception as e:
-            training_state["status"] = "failed"
-            training_state["error"] = str(e)
+            state["status"] = "failed"
+            state["pid"] = None
+            state["error"] = str(e)
+            write_training_status(state)
             logger.error("Failed to start training process: %s", e)
             raise HTTPException(status_code=500, detail=f"Failed to start training: {e}")
 
 
 @router.get("/train/status")
 def get_training_status():
-    global training_state
-    
     settings = get_settings()
     model_dir = settings["model_dir"]
     log_path = ML_LOG_PATH
@@ -184,11 +237,24 @@ def get_training_status():
     # Read latest model metrics
     metrics = manager.get_metrics()
     
+    state = read_training_status()
+    
+    # Verify running status matches OS process
+    if state["status"] == "running":
+        pid = state.get("pid")
+        if not is_pid_running(pid):
+            logger.warning("Training status was 'running' but process %s is dead on status check. Recovering.", pid)
+            state["status"] = "failed"
+            state["pid"] = None
+            state["error"] = "Training process was aborted unexpectedly (zombie cleared)"
+            state["completed_at"] = datetime.now(timezone.utc).isoformat()
+            write_training_status(state)
+            
     return {
-        "status": training_state["status"],
-        "started_at": training_state["started_at"],
-        "completed_at": training_state["completed_at"],
-        "error": training_state["error"],
+        "status": state["status"],
+        "started_at": state["started_at"],
+        "completed_at": state["completed_at"],
+        "error": state["error"],
         "logs": logs,
         "metrics": metrics,
     }
@@ -196,11 +262,12 @@ def get_training_status():
 
 @router.post("/train/restore-baseline")
 def restore_baseline():
-    global training_state
-    
     with training_lock:
-        if training_state["status"] == "running":
-            raise HTTPException(status_code=400, detail="Cannot restore while training is in progress")
+        state = read_training_status()
+        if state["status"] == "running":
+            pid = state.get("pid")
+            if is_pid_running(pid):
+                raise HTTPException(status_code=400, detail="Cannot restore while training is in progress")
             
         settings = get_settings()
         model_dir = settings["model_dir"]
@@ -235,10 +302,12 @@ def restore_baseline():
             manager.reload()
             
             # Reset state
-            training_state["status"] = "idle"
-            training_state["started_at"] = None
-            training_state["completed_at"] = None
-            training_state["error"] = None
+            state["status"] = "idle"
+            state["pid"] = None
+            state["started_at"] = None
+            state["completed_at"] = None
+            state["error"] = None
+            write_training_status(state)
             
             # Create a log entry indicating restoration
             os.makedirs(LOGS_DIR, exist_ok=True)

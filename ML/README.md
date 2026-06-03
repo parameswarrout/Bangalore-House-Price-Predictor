@@ -9,18 +9,72 @@ This folder contains the training engine and feature engineering modules for pre
 The flowchart below visualizes how the manual form UI, the CSV dataset uploader, the backend API endpoints, the separate data storage layer, and the asynchronous model hot-reloader connect together:
 
 ```mermaid
-graph TD
-    A[Frontend UI: Custom Data Form] -->|POST /api/custom-data| B[Backend API]
-    B -->|Save Separately| C[(user_contributed_prices.csv)]
+flowchart TB
+    subgraph UI ["Client Application (React UI)"]
+        direction LR
+        UI_Form["Custom Data Form Panel"]
+        UI_Button["Retrain Process Trigger"]
+    end
+
+    subgraph API ["Backend API Gateway (FastAPI)"]
+        direction TB
+        API_Main["FastAPI Router"]
+        API_Model["Model Manager (In-Memory)"]
+    end
+
+    subgraph Storage ["Persistent Storage Layer"]
+        direction LR
+        Base_CSV[("bengaluru_house_prices.csv<br/>(Baseline Dataset)")]
+        Custom_CSV[("user_contributed_prices.csv<br/>(Custom Listings)")]
+    end
+
+    subgraph Training ["Asynchronous ML Pipeline"]
+        direction TB
+        Train_Engine["Training Sandbox (train.py)"]
+        subgraph Artifacts ["Model Registry"]
+            Model_PKL[("Ensemble & Tree Models<br/>(models/*.pkl)")]
+            Model_PT[("Deep Learning Models<br/>(models/deep/*)")]
+        end
+    end
+
+    %% Interactions
+    UI_Form -->|1. POST /custom-data/add| API_Main
+    API_Main -->|2. Save Separately| Custom_CSV
     
-    D[(bengaluru_house_prices.csv)] --> E[Training Pipeline]
-    C -->|Optional Merge| E
+    UI_Button -->|3. POST /train| API_Main
+    API_Main -->|4. Launch Subprocess| Train_Engine
     
-    F[Frontend UI: Retrain Button] -->|POST /api/train| B
-    B -->|Background Task| E
-    E -->|Train XGB, LGBM, Stacking| G[(models/*.pkl)]
-    G -->|Hot Reload| H[Model Manager]
-    H -->|Serve Predictions| A
+    Base_CSV -->|5a. Base Ingestion| Train_Engine
+    Custom_CSV -->|5b. Optional Merge| Train_Engine
+    
+    Train_Engine -->|6a. Save Trees| Model_PKL
+    Train_Engine -->|6b. Save Deep Learning| Model_PT
+    
+    Model_PKL -->|7. Hot Reload| API_Model
+    Model_PT -->|7. Hot Reload| API_Model
+    
+    API_Model -->|8. Consensus Inference| UI_Form
+
+    %% Styling Classes
+    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#f8fafc;
+    classDef ui fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#ffffff;
+    classDef api fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+    classDef storage fill:#0b1329,stroke:#00b4d8,stroke-width:2px,color:#00b4d8;
+    classDef pipeline fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#ffffff;
+    classDef registry fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#ffffff;
+
+    class UI_Form,UI_Button ui;
+    class API_Main,API_Model api;
+    class Base_CSV,Custom_CSV storage;
+    class Train_Engine pipeline;
+    class Model_PKL,Model_PT registry;
+
+    %% Subgraph Styling
+    style UI fill:#13132d,stroke:#6366f1,stroke-width:1px,stroke-dasharray:5 5;
+    style API fill:#0a1f18,stroke:#10b981,stroke-width:1px,stroke-dasharray:5 5;
+    style Storage fill:#051c24,stroke:#00b4d8,stroke-width:1px,stroke-dasharray:5 5;
+    style Training fill:#210f08,stroke:#f97316,stroke-width:1px,stroke-dasharray:5 5;
+    style Artifacts fill:#180a24,stroke:#a855f7,stroke-width:1px,stroke-dasharray:5 5;
 ```
 
 ---
@@ -70,9 +124,29 @@ graph TD
     end
     
     J -->|Serialize Models| M[(backend/models/*.pkl)]
+    L -->|Serialize PyTorch Models| MD[(backend/models/deep/*)]
     K -->|Extract Feature Importances| N[(insights.json)]
     I -->|Evaluate metrics| O[(metrics.json)]
     D3 -->|Generate lookup| P[(location_counts.json & locations.json)]
+
+    %% Custom Color Styles
+    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#f8fafc;
+    classDef storage fill:#0b1329,stroke:#00b4d8,stroke-width:2px,color:#00b4d8;
+    classDef pipeline fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#ffffff;
+    classDef preprocess fill:#065f46,stroke:#10b981,stroke-width:1px,color:#ffffff;
+    classDef feature fill:#581c87,stroke:#a855f7,stroke-width:1px,color:#ffffff;
+    classDef model fill:#1e3a8a,stroke:#3b82f6,stroke-width:1px,color:#ffffff;
+    classDef advanced fill:#713f12,stroke:#eab308,stroke-width:1px,color:#ffffff;
+    classDef artifact fill:#701a75,stroke:#d946ef,stroke-width:2px,color:#ffffff;
+
+    class A,B storage;
+    class C pipeline;
+    class D,D1,D2,D3,D4,D5 preprocess;
+    class E,E1,E2,E3 feature;
+    class F pipeline;
+    class G,H1,H2,H3,I,J model;
+    class K,L advanced;
+    class M,MD,N,O,P artifact;
 ```
 
 ---
@@ -103,11 +177,29 @@ The core model is a **Stacking Regressor** (`sklearn.ensemble.StackingRegressor`
 
 ---
 
-## 5. In-Training Flags and Utilities
+## 5. Advanced Deep Learning Models (PyTorch)
 
-Run the pipeline from the project root using `sys.executable ML/train.py` with the following flags:
+When the `--deep` flag is enabled, the pipeline trains two deep learning architectures implemented in PyTorch under `ml_project/deep/`:
+
+1. **Embedding MLP**:
+   * **Architecture**: A Multi-Layer Perceptron (MLP) that dynamically handles categorical inputs (like `location`) using learnable low-dimensional embedding layers. These embeddings are concatenated with standardized continuous features and routed through fully connected hidden layers with ReLU activations, batch normalization, and dropout.
+   * **Inference Serving**: The weights are serialized to `backend/models/deep/embedding_mlp.pt` along with categorical mappings in `encoders.json`. During API requests, the backend `ModelManager` (defined in [model.py](file:///e:/Rasonix_ML_Project/backend/app/ml/model.py)) loads this model and feeds predictions dynamically into the consensus ensemble (displayed as **Deep Learning MLP**).
+2. **TabNet**:
+   * **Architecture**: A PyTorch-based Tabular Attention Network that implements sequential attention selection to choose features at each decision step, providing self-explainability and neural routing tailored specifically for tabular datasets.
+
+---
+
+## 6. In-Training Flags and Utilities
+
+Run the pipeline from the project root using `python ML/train.py` with the following flags:
 
 * `--tune`: Launches **Optuna** hyperparameter search running 15 validation trials per learner to optimize cross-validated $R^2$ before stacking.
 * `--explain`: Evaluates the **SHAP** TreeExplainer on the LightGBM model, generating the top 8 global features and exporting them to `insights.json` for frontend analytics.
 * `--deep`: Trains PyTorch-based **Embedding MLP** and **TabNet** architectures, writing metrics to `metrics.json` for comparative research logs.
 * `--custom-data <path>`: Integrates user-provided CSV listings with the main dataset before fitting models.
+
+### Subprocess Console Logging Redirection
+The retraining console captures and streams stdout and stderr to the frontend. To prevent harmless logs and libraries from polluting stderr with false-alarm error prefixes:
+* **Optuna Trial Logs** (e.g., `[I 2026-06-03 ...]`) are automatically demoted and routed to `[INFO]` severity.
+* **PyTorch/TabNet Warnings** (e.g., `UserWarning`) are demoted and routed to `[WARNING]` severity.
+* This ensures that only true execution failures are marked as `[ERROR]` inside the retraining terminal UI.

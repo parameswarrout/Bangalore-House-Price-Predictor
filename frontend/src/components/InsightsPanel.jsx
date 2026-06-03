@@ -48,7 +48,7 @@ export default function InsightsPanel({ insights }) {
           Sqft vs Price and resolving data skew with log-transformation.
         </p>
         <div className="story-stat">
-          {(insights?.model_performance?.find((m) => m.name === 'Stacking')?.r2 ?? 0.88) * 100}% R² Score
+          {((insights?.model_performance?.find((m) => m.name === 'Stacking')?.r2 ?? 0.88) * 100).toFixed(1)}% R² Score
         </div>
       </div>
 
@@ -102,7 +102,7 @@ export default function InsightsPanel({ insights }) {
           <div style={{ flex: 1 }}>
             <h3>3. The Ensemble Meta-Model</h3>
             <p>
-              Stacking Regressor aggregates XGBoost, LightGBM, and Random Forest to reduce
+              Stacking Regressor aggregates XGBoost, LightGBM, and CatBoost to reduce
               individual model bias across Bangalore&apos;s volatile market.
             </p>
           </div>

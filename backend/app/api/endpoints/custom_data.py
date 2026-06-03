@@ -2,7 +2,9 @@ import io
 import os
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.core.file_lock import CSVFileLock
 
 router = APIRouter()
 
@@ -22,19 +24,33 @@ class CustomPropertyInput(BaseModel):
     balcony: float = Field(default=1.0, ge=0)
     price: float = Field(..., gt=0, description="Price in Lakhs")
 
+    @model_validator(mode="after")
+    def validate_bhk_ratio(self):
+        try:
+            bhk = int(self.size.split(" ")[0])
+        except (ValueError, IndexError):
+            bhk = 2  # default fallback matching preprocessing.py
+            
+        if self.total_sqft / bhk < 300:
+            raise ValueError(
+                f"total_sqft per BHK must be at least 300 (parsed {bhk} BHK, got {self.total_sqft / bhk:.0f} sqft/BHK)"
+            )
+        return self
+
 
 @router.get("/custom-data")
 def get_custom_data():
     if not os.path.exists(CUSTOM_DATA_PATH):
         return []
     try:
-        df = pd.read_csv(CUSTOM_DATA_PATH)
-        df = df.fillna("")
-        records = df.to_dict(orient="records")
-        # Assign a stable ID based on index
-        for i, rec in enumerate(records):
-            rec["id"] = i
-        return records
+        with CSVFileLock(CUSTOM_DATA_PATH):
+            df = pd.read_csv(CUSTOM_DATA_PATH)
+            df = df.fillna("")
+            records = df.to_dict(orient="records")
+            # Assign a stable ID based on index
+            for i, rec in enumerate(records):
+                rec["id"] = i
+            return records
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -55,13 +71,14 @@ def add_custom_property(item: CustomPropertyInput):
             "price": item.price
         }])
         
-        if os.path.exists(CUSTOM_DATA_PATH):
-            df = pd.read_csv(CUSTOM_DATA_PATH)
-            df = pd.concat([df, new_row], ignore_index=True)
-        else:
-            df = new_row
-            
-        df.to_csv(CUSTOM_DATA_PATH, index=False)
+        with CSVFileLock(CUSTOM_DATA_PATH):
+            if os.path.exists(CUSTOM_DATA_PATH):
+                df = pd.read_csv(CUSTOM_DATA_PATH)
+                df = pd.concat([df, new_row], ignore_index=True)
+            else:
+                df = new_row
+                
+            df.to_csv(CUSTOM_DATA_PATH, index=False)
         return {"status": "success", "message": "Property added successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -105,14 +122,31 @@ async def upload_custom_csv(file: UploadFile = File(...)):
         # Clean null values in critical fields
         df_standard = df_standard.dropna(subset=["location", "total_sqft", "bath", "price"])
         
+        # Perform validation on BHK ratio for all standard rows
+        invalid_rows = []
+        for idx, row in df_standard.iterrows():
+            try:
+                bhk_val = int(str(row["size"]).split(" ")[0])
+            except (ValueError, IndexError):
+                bhk_val = 2
+            if row["total_sqft"] / bhk_val < 300:
+                invalid_rows.append(f"Row {idx}: {row['total_sqft']} sqft for {row['size']} ({row['total_sqft']/bhk_val:.1f} sqft/BHK)")
+
+        if invalid_rows:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Some rows violate the minimum 300 sqft per BHK rule:\n" + "\n".join(invalid_rows[:5])
+            )
+        
         os.makedirs(DATA_DIR, exist_ok=True)
-        if os.path.exists(CUSTOM_DATA_PATH):
-            df_existing = pd.read_csv(CUSTOM_DATA_PATH)
-            df_combined = pd.concat([df_existing, df_standard], ignore_index=True)
-        else:
-            df_combined = df_standard
-            
-        df_combined.to_csv(CUSTOM_DATA_PATH, index=False)
+        with CSVFileLock(CUSTOM_DATA_PATH):
+            if os.path.exists(CUSTOM_DATA_PATH):
+                df_existing = pd.read_csv(CUSTOM_DATA_PATH)
+                df_combined = pd.concat([df_existing, df_standard], ignore_index=True)
+            else:
+                df_combined = df_standard
+                
+            df_combined.to_csv(CUSTOM_DATA_PATH, index=False)
         return {"status": "success", "message": f"Successfully imported {len(df_standard)} properties"}
     except HTTPException as he:
         raise he
@@ -125,15 +159,16 @@ def delete_custom_property(index: int):
     if not os.path.exists(CUSTOM_DATA_PATH):
         raise HTTPException(status_code=404, detail="No custom data file found")
     try:
-        df = pd.read_csv(CUSTOM_DATA_PATH)
-        if index < 0 or index >= len(df):
-            raise HTTPException(status_code=400, detail="Invalid index")
-        df = df.drop(index).reset_index(drop=True)
-        if len(df) == 0:
-            if os.path.exists(CUSTOM_DATA_PATH):
-                os.remove(CUSTOM_DATA_PATH)
-        else:
-            df.to_csv(CUSTOM_DATA_PATH, index=False)
+        with CSVFileLock(CUSTOM_DATA_PATH):
+            df = pd.read_csv(CUSTOM_DATA_PATH)
+            if index < 0 or index >= len(df):
+                raise HTTPException(status_code=400, detail="Invalid index")
+            df = df.drop(index).reset_index(drop=True)
+            if len(df) == 0:
+                if os.path.exists(CUSTOM_DATA_PATH):
+                    os.remove(CUSTOM_DATA_PATH)
+            else:
+                df.to_csv(CUSTOM_DATA_PATH, index=False)
         return {"status": "success", "message": f"Deleted listing {index}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -143,7 +178,9 @@ def delete_custom_property(index: int):
 def clear_custom_data():
     if os.path.exists(CUSTOM_DATA_PATH):
         try:
-            os.remove(CUSTOM_DATA_PATH)
+            with CSVFileLock(CUSTOM_DATA_PATH):
+                if os.path.exists(CUSTOM_DATA_PATH):
+                    os.remove(CUSTOM_DATA_PATH)
             return {"status": "success", "message": "Custom data cleared successfully"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -164,8 +201,9 @@ def get_custom_data_stats():
     custom_count = 0
     if os.path.exists(CUSTOM_DATA_PATH):
         try:
-            df_custom = pd.read_csv(CUSTOM_DATA_PATH)
-            custom_count = len(df_custom)
+            with CSVFileLock(CUSTOM_DATA_PATH):
+                df_custom = pd.read_csv(CUSTOM_DATA_PATH)
+                custom_count = len(df_custom)
         except:
             pass
             

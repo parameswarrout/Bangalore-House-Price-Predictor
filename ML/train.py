@@ -17,8 +17,11 @@ from xgboost import XGBRegressor
 from ml_project.metrics import regression_metrics
 from ml_project.preprocessing import (
     MODEL_FEATURES,
+    RARE_LOCATION_THRESHOLD,
     build_location_counts,
     load_and_prepare_training_frame,
+    apply_feature_engineering,
+    remove_outliers_and_cap_prices,
 )
 from ml_project.transformers import InteractionFeatureTransformer, LocationTargetEncoder
 
@@ -30,12 +33,12 @@ except ImportError:
     HAS_CATBOOST = False
 
 
-def _make_xgb_pipeline(**xgb_kwargs):
+def _make_xgb_pipeline(smoothing: float = 10.0, **xgb_kwargs):
     defaults = dict(n_estimators=100, learning_rate=0.1, max_depth=6, random_state=42)
     defaults.update(xgb_kwargs)
     pipe = Pipeline([
         ("interactions", InteractionFeatureTransformer()),
-        ("encoder", LocationTargetEncoder()),
+        ("encoder", LocationTargetEncoder(smoothing=smoothing)),
         ("scaler", StandardScaler()),
         ("model", XGBRegressor(**defaults)),
     ])
@@ -44,7 +47,7 @@ def _make_xgb_pipeline(**xgb_kwargs):
     return pipe
 
 
-def _make_lgbm_pipeline(**lgbm_kwargs):
+def _make_lgbm_pipeline(smoothing: float = 10.0, **lgbm_kwargs):
     defaults = dict(
         n_estimators=200,
         learning_rate=0.05,
@@ -55,7 +58,7 @@ def _make_lgbm_pipeline(**lgbm_kwargs):
     defaults.update(lgbm_kwargs)
     pipe = Pipeline([
         ("interactions", InteractionFeatureTransformer()),
-        ("encoder", LocationTargetEncoder()),
+        ("encoder", LocationTargetEncoder(smoothing=smoothing)),
         ("scaler", StandardScaler()),
         ("model", LGBMRegressor(**defaults)),
     ])
@@ -64,7 +67,7 @@ def _make_lgbm_pipeline(**lgbm_kwargs):
     return pipe
 
 
-def _make_catboost_pipeline(**catboost_kwargs):
+def _make_catboost_pipeline(smoothing: float = 10.0, **catboost_kwargs):
     if not HAS_CATBOOST:
         raise ImportError("catboost is not installed")
     defaults = dict(
@@ -77,7 +80,7 @@ def _make_catboost_pipeline(**catboost_kwargs):
     defaults.update(catboost_kwargs)
     pipe = Pipeline([
         ("interactions", InteractionFeatureTransformer()),
-        ("encoder", LocationTargetEncoder()),
+        ("encoder", LocationTargetEncoder(smoothing=smoothing)),
         ("scaler", StandardScaler()),
         ("model", CatBoostRegressor(**defaults)),
     ])
@@ -152,10 +155,20 @@ class StreamToLogger:
     def write(self, buf):
         for line in buf.rstrip().splitlines():
             if line.strip():
-                self.logger.log(self.log_level, line.rstrip())
+                level = self.log_level
+                # Dynamically route stderr messages depending on keywords
+                if self.log_level == logging.ERROR:
+                    if "[I " in line or "info" in line.lower():
+                        level = logging.INFO
+                    elif "warning" in line.lower() or "[W " in line or "UserWarning" in line:
+                        level = logging.WARNING
+                self.logger.log(level, line.rstrip())
             
     def flush(self):
         pass
+
+    def isatty(self):
+        return False
 
 
 def setup_logging(dev_mode: bool = True):
@@ -203,16 +216,44 @@ def run_training(tune: bool = False, explain: bool = False, deep: bool = False, 
         print(f"Error: Data not found at {data_path}")
         return
 
-    df = load_and_prepare_training_frame(data_path, custom_csv_path=custom_data_path)
-    print(f"Prepared {len(df)} samples after unified preprocessing.")
-
-    X = df[MODEL_FEATURES]
-    y = np.log1p(df["price"])
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+    # Load raw cleaned dataframe (no outlier removal, price capping, or location bucketing yet)
+    df = load_and_prepare_training_frame(
+        data_path,
+        custom_csv_path=custom_data_path,
+        apply_training_filters=False,
+        location_counts=None
     )
-    print(f"Training on {len(X_train)} samples, holdout {len(X_test)}...")
+    print(f"Loaded and raw-cleaned {len(df)} samples.")
+
+    # Perform train-test split before training-specific filters or location-frequency bucketing
+    train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+
+    # 1. Fit rare location counts on the training set
+    train_location_counts = build_location_counts(train_df)
+
+    # 2. Apply rare location bucketing on train_df (using training counts)
+    train_df = apply_feature_engineering(
+        train_df,
+        apply_training_filters=False,
+        location_counts=train_location_counts
+    )
+    # Apply training-only filters (outliers, price caps) exclusively on training set
+    train_df = remove_outliers_and_cap_prices(train_df, quantile=0.99, std_multiplier=3.0)
+
+    # 3. Apply rare location bucketing on test_df (using training counts)
+    # Note: test_df retains its outliers and price range to prevent evaluation bias
+    test_df = apply_feature_engineering(
+        test_df,
+        apply_training_filters=False,
+        location_counts=train_location_counts
+    )
+
+    X_train = train_df[MODEL_FEATURES]
+    y_train = np.log1p(train_df["price"])
+    X_test = test_df[MODEL_FEATURES]
+    y_test = np.log1p(test_df["price"])
+
+    print(f"Training on {len(X_train)} samples after training filters, holdout evaluation on {len(X_test)}...")
 
     tuning = {}
     if tune:
@@ -257,19 +298,21 @@ def run_training(tune: bool = False, explain: bool = False, deep: bool = False, 
         catboost_pipe.fit(X_train, y_train)
         joblib.dump(catboost_pipe, os.path.join(model_dir, "catboost_model.pkl"))
 
-    location_counts = build_location_counts(df)
+    location_counts = train_location_counts
     with open(os.path.join(model_dir, "location_counts.json"), "w", encoding="utf-8") as f:
         json.dump(location_counts, f, indent=2)
 
-    locations = sorted(df["location"].unique().tolist())
+    locations = sorted(list(train_location_counts.keys()))
 
-    price_hist, bins = np.histogram(df["price"], bins=10, range=(0, 1000))
+    # Insights are generated on the combined dataset (retaining original test prices for accurate stats)
+    df_for_insights = pd.concat([train_df, test_df], ignore_index=True)
+    price_hist, bins = np.histogram(df_for_insights["price"], bins=10, range=(0, 1000))
     price_dist = [
         {"range": f"{int(bins[i])}-{int(bins[i+1])}L", "count": int(price_hist[i])}
         for i in range(len(price_hist))
     ]
 
-    loc_stats = df.groupby("location")["price"].agg(["mean", "count"]).reset_index()
+    loc_stats = df_for_insights.groupby("location")["price"].agg(["mean", "count"]).reset_index()
     top_locs = loc_stats[loc_stats["count"] >= 5].sort_values(by="mean", ascending=False).head(8)
     loc_data = [
         {"location": row["location"], "avg_price": round(row["mean"], 2)}
@@ -387,6 +430,29 @@ def run_training(tune: bool = False, explain: bool = False, deep: bool = False, 
         f"MAPE: {stack_metrics['mape_pct']:.2f}%"
     )
 
+    # Write completed status to training_status.json
+    logs_dir = os.path.join(base_dir, "logs")
+    status_file = os.path.join(logs_dir, "training_status.json")
+    state = {}
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+        except Exception:
+            pass
+    state.update({
+        "status": "completed",
+        "pid": None,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "error": None
+    })
+    try:
+        os.makedirs(logs_dir, exist_ok=True)
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"Error writing training status file: {e}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Bangalore house price models")
@@ -400,4 +466,31 @@ if __name__ == "__main__":
     parser.add_argument("--custom-data", type=str, default=None, help="Path to custom CSV data to merge")
     parser.add_argument("--no-dev", action="store_true", help="Disable dev mode console logging")
     args = parser.parse_args()
-    run_training(tune=args.tune, explain=args.explain, deep=args.deep, custom_data_path=args.custom_data, dev=not args.no_dev)
+    
+    try:
+        run_training(tune=args.tune, explain=args.explain, deep=args.deep, custom_data_path=args.custom_data, dev=not args.no_dev)
+    except Exception as e:
+        # Write failed status to training_status.json
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        logs_dir = os.path.join(base_dir, "logs")
+        status_file = os.path.join(logs_dir, "training_status.json")
+        state = {}
+        if os.path.exists(status_file):
+            try:
+                with open(status_file, "r", encoding="utf-8") as f:
+                    state = json.load(f)
+            except Exception:
+                pass
+        state.update({
+            "status": "failed",
+            "pid": None,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "error": str(e)
+        })
+        try:
+            os.makedirs(logs_dir, exist_ok=True)
+            with open(status_file, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception:
+            pass
+        raise

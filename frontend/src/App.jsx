@@ -92,10 +92,20 @@ const App = () => {
     setPrediction(null);
 
     try {
+      const payload = {
+        ...formData,
+        total_sqft: Number(formData.total_sqft),
+        bath: Number(formData.bath),
+        bhk: Number(formData.bhk),
+        balcony: Number(formData.balcony),
+        area_type_enc: Number(formData.area_type_enc),
+        is_ready_to_move: Number(formData.is_ready_to_move),
+      };
+
       const response = await fetch(`${API_BASE}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {

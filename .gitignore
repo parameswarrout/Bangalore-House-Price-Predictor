@@ -96,3 +96,6 @@ checkpoints/
 !backend/models/location_counts.json
 !backend/models/insights.json
 !backend/models/metrics.json
+
+# Custom User-Contributed Data
+data/user_contributed_prices.csv

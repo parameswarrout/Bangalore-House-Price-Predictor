@@ -34,6 +34,20 @@ pip install -r requirements-dev.txt
 python ML/train.py
 ```
 
+### Model Retraining & CLI Options
+
+To run model training with specific options, run:
+```powershell
+python ML/train.py [flags]
+```
+
+**Available Flags:**
+* `--tune`: Run **Optuna** hyperparameter optimization to tune XGBoost, LightGBM, and CatBoost (takes ~2 minutes).
+* `--deep`: Train PyTorch deep learning architectures (**Embedding MLP** and **TabNet**) in addition to standard models (takes ~1 minute).
+* `--explain`: Generate **SHAP** feature explanations and export them to `insights.json` to feed the frontend dashboard.
+* `--custom-data <path>`: Merge a custom user listings CSV file with the baseline training set.
+* `--no-dev`: Disable developer-mode verbose log outputs in the terminal.
+
 ### Run the API
 
 ```powershell

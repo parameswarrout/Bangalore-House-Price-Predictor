@@ -14,4 +14,7 @@ def get_settings():
         "require_models": os.environ.get("REQUIRE_MODELS", "true").lower() == "true",
         "cors_origins": [o.strip() for o in cors_raw.split(",") if o.strip()],
         "model_version": os.environ.get("MODEL_VERSION", "2.0.0"),
+        "ollama_url": os.environ.get("OLLAMA_URL", "http://localhost:11434"),
+        "ollama_model": os.environ.get("OLLAMA_MODEL", "qwen2.5:3b"),
     }
+

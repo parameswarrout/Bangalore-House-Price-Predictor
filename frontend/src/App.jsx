@@ -6,7 +6,9 @@ import InsightsPanel from './components/InsightsPanel';
 import PredictorForm from './components/PredictorForm';
 import DataRetrainingPanel from './components/DataRetrainingPanel';
 import ShapWaterfallChart from './components/ShapWaterfallChart';
+import AiAdvisorTab from './components/AiAdvisorTab';
 import { API_BASE } from './config';
+
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('predictor');
@@ -175,6 +177,13 @@ const App = () => {
           >
             Price Predictor
           </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'advisor' ? 'active' : ''}`}
+            onClick={() => setActiveTab('advisor')}
+          >
+            AI Property Advisor
+          </button>
           {/* Hide Research & Insights tab button for now as requested
           <button
             type="button"
@@ -192,6 +201,7 @@ const App = () => {
             Data Portal &amp; Retraining
           </button>
         </div>
+
       </motion.div>
 
       {apiWarning && (
@@ -264,9 +274,28 @@ const App = () => {
             <DataRetrainingPanel locations={locations} />
           </motion.div>
         )}
+
+        {activeTab === 'advisor' && (
+          <motion.div
+            key="advisor"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{ width: '100%' }}
+          >
+            <AiAdvisorTab
+              onApplyFormData={(params) => {
+                setFormData(params);
+                setActiveTab('predictor');
+              }}
+            />
+          </motion.div>
+        )}
+
       </AnimatePresence>
     </div>
   );
 };
+
 
 export default App;

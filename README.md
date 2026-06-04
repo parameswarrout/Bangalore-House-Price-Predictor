@@ -134,3 +134,43 @@ flowchart LR
   class CSV,CustomCSV storage;
   class Train pipeline;
 ```
+
+## 🤖 Local AI Property Advisor Integration (New v2.0)
+
+An interactive, local AI chatbot has been integrated directly into the dashboard under a new tab, powered by a local Ollama server running the `qwen2.5:3b` model.
+
+### Features
+*   **Dataset Search:** Ask natural language questions like *"Show me 3 BHK houses in Whitefield"* or *"Compare Indira Nagar and Electronic City side-by-side"*. The AI will query the Pandas dataset in-memory and render structured Markdown tables.
+*   **ML Predictions:** Say *"Predict a 3 BHK in Whitefield with 1500 sqft"* to execute your trained ensemble models directly from the chat. You can also load these parameters into the main sliders with one click using the **"Apply parameters to Price Predictor"** button.
+*   **Security Policy:** The AI is locked out of deleting or modifying the raw dataset for data integrity reasons.
+
+### Running the AI Integration
+
+#### Step 1: Start Ollama Server
+Ensure the Ollama application is running (normally active in your Windows system tray). You can pull and launch the model in your terminal using:
+```powershell
+ollama run qwen2.5:3b
+```
+*(Alternatively, you can pull the model via `ollama pull qwen2.5:3b` if the Ollama service is already running in the background)*
+
+
+#### Step 2: Start the FastAPI Backend
+Open a terminal in the root of the project and run the Uvicorn development server:
+```powershell
+# Activate virtual environment
+.venv\Scripts\activate
+
+# Run FastAPI
+cd backend
+uvicorn main:app --reload
+```
+*(API Docs will be available at `http://localhost:8000/docs`)*
+
+#### Step 3: Start the React Frontend
+Open a separate terminal in the root of the project and run the Vite development server:
+```powershell
+cd frontend
+npm run dev
+```
+*(Open the URL `http://localhost:5173` in your browser and click the new **AI Property Advisor** tab!)*
+

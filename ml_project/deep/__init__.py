@@ -1,1 +1,4 @@
-"""PyTorch deep learning models (research; not served by API by default)."""
+"""PyTorch deep learning models (research)."""
+
+from .model import EmbeddingMLP
+from .regressor import EmbeddingMLPRegressor

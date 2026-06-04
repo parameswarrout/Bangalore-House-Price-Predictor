@@ -1,4 +1,4 @@
-# Property Analytics - Machine Learning Pipeline
+# ML Readme - Property Price Predictor
 
 This folder contains the training engine and feature engineering modules for predicting property prices in Bangalore.
 
@@ -203,3 +203,12 @@ The retraining console captures and streams stdout and stderr to the frontend. T
 * **Optuna Trial Logs** (e.g., `[I 2026-06-03 ...]`) are automatically demoted and routed to `[INFO]` severity.
 * **PyTorch/TabNet Warnings** (e.g., `UserWarning`) are demoted and routed to `[WARNING]` severity.
 * This ensures that only true execution failures are marked as `[ERROR]` inside the retraining terminal UI.
+
+---
+
+## 7. Windows Compatibility & Deep Learning Training Fixes
+
+To ensure robust execution of the Deep Learning (`--deep`) pipeline on Windows systems:
+1. **DLL Initialization Fix**: We pre-import `torch` at the very entry point of the training script. This prevents `WinError 1114` DLL initialization failures that occur when OpenMP runtimes (`libiomp5md.dll` or similar) are loaded in an incorrect order by `lightgbm`/`xgboost` and `torch`.
+2. **Stacking Regressor Deadlock Prevention**: Changed `n_jobs` in `StackingRegressor` from `-1` to `None` (sequential training). This avoids multiprocessing deadlock issues on Windows when spawning child processes that initialize both PyTorch and gradient boosting frameworks in parallel.
+3. **Training Progress Visibility**: Added active progress logging to print the average loss at key epochs (e.g., 1, 10, 20, ..., 80) during the training of the Embedding MLP, preventing the console from appearing frozen/hung.

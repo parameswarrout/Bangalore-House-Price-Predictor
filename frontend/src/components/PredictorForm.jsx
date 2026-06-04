@@ -1,7 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
-import { Bath, Home, Layout, MapPin, Maximize2, TrendingUp, Map, List } from 'lucide-react';
-
-const BangaloreMap = lazy(() => import('./BangaloreMap'));
+import { Bath, Home, Layout, MapPin, Maximize2, TrendingUp } from 'lucide-react';
 
 const AREA_TYPES = [
   { label: 'Super Built-up Area', value: 0 },
@@ -18,18 +15,12 @@ export default function PredictorForm({
   onChange,
   onSubmit,
 }) {
-  const [mapMode, setMapMode] = useState(false);
-
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({
       ...formData,
       [name]: name === 'location' ? value : value === '' ? '' : Number(value),
     });
-  };
-
-  const handleLocationFromMap = (loc) => {
-    onChange({ ...formData, location: loc });
   };
 
   return (
@@ -39,50 +30,27 @@ export default function PredictorForm({
           <TrendingUp size={24} color="var(--primary)" />
           <h2 style={{ fontSize: '1.5rem' }}>Property Config</h2>
         </div>
-        {/* Map mode toggle */}
-        <button
-          type="button"
-          className={`map-mode-toggle ${mapMode ? 'active' : ''}`}
-          onClick={() => setMapMode((m) => !m)}
-          title={mapMode ? 'Switch to dropdown mode' : 'Switch to map mode'}
-        >
-          {mapMode ? <List size={15} /> : <Map size={15} />}
-          {mapMode ? 'Manual' : 'Map Mode'}
-        </button>
       </div>
 
       <form onSubmit={onSubmit}>
-        {/* Location — map or dropdown */}
-        {mapMode ? (
-          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-            <label htmlFor="location-map">Location</label>
-            <Suspense fallback={<div className="map-loading-placeholder">Loading map…</div>}>
-              <BangaloreMap
-                selectedLocation={formData.location}
-                locations={locations}
-                onLocationChange={handleLocationFromMap}
-              />
-            </Suspense>
+        {/* Location — dropdown */}
+        <div className="form-group">
+          <label htmlFor="location">Location</label>
+          <div className="input-wrapper">
+            <MapPin size={18} aria-hidden />
+            <select
+              id="location"
+              name="location"
+              value={formData.location}
+              onChange={handleChange}
+              aria-label="Property location"
+            >
+              {locations.map((loc) => (
+                <option key={loc} value={loc}>{loc}</option>
+              ))}
+            </select>
           </div>
-        ) : (
-          <div className="form-group">
-            <label htmlFor="location">Location</label>
-            <div className="input-wrapper">
-              <MapPin size={18} aria-hidden />
-              <select
-                id="location"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                aria-label="Property location"
-              >
-                {locations.map((loc) => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           <div className="form-group">

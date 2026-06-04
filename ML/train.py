@@ -3,6 +3,12 @@ import json
 import os
 from datetime import datetime, timezone
 
+# Pre-import torch to avoid WinError 1114 OpenMP runtime conflicts on Windows
+try:
+    import torch
+except ImportError:
+    pass
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -275,11 +281,19 @@ def run_training(tune: bool = False, explain: bool = False, deep: bool = False, 
     else:
         print("CatBoost not installed; stacking uses XGB + LGBM only.")
 
+    if deep:
+        print("Integrating PyTorch Embedding MLP into the Stacking Ensemble...")
+        try:
+            from ml_project.deep.regressor import EmbeddingMLPRegressor
+            estimators.append(("mlp", EmbeddingMLPRegressor(epochs=80)))
+        except Exception as e:
+            print(f"Failed to integrate PyTorch MLP into stacking: {e}")
+
     stacking_model = StackingRegressor(
         estimators=estimators,
         final_estimator=Ridge(alpha=1.0),
         cv=5,
-        n_jobs=-1,
+        n_jobs=None,
     )
 
     print("Fitting models...")
